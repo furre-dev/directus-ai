@@ -1,41 +1,41 @@
-import { authentication, createDirectus, createItem, rest, uploadFiles } from "@directus/sdk";
-import { components } from "../api-collection";
-import fs, { readFileSync } from "fs";
+import { authentication, createDirectus, createItem, rest, staticToken, uploadFiles } from "@directus/sdk";
+import { getPageContent } from "./utils/getPageContent";
+import { PageType } from "./utils/Types";
+import { getBlocksFromImage } from "./utils/getBlocksFromImage";
+import dotenv from "dotenv";
 
-type PageType = components["schemas"]["ItemsPages"];
-type PageSectionType = components["schemas"]["ItemsPageSections"];
+dotenv.config();
 
-const filePath = "./images.jpg";
-
-const client = createDirectus('https://furkan-cms-migration.directus.app/').with(authentication()).with(rest());
+const client = createDirectus('https://furkan-cms-migration.directus.app/').with(staticToken(process.env.DIRECTUS_API_AUTH_TOKEN!)).with(rest());
+const url = "https://www.sbab.se/1/privat/lana/privatlan/privatlan_-_sa_funkar_det.html"
 
 async function createItemInDirectus() {
-  const file = new Blob([readFileSync(filePath)], { type: 'image/jpeg' });
-  const formData = new FormData();
-  formData.append("file", file, "images.jpg");
+  console.log("taking screenshot")
+  const { screenshot, title } = await getPageContent(url)
 
-  const uploadedImage: { id: string } = await client.request(uploadFiles(formData));
-  console.log(uploadedImage);
+  console.log("extracting content from screenshot, this can take a while please wait...")
+  const blocks = await getBlocksFromImage(screenshot);
 
-  const item: PageType = {
-    title: "FreeMK",
-    screenshot: "3c00d81c-e8e6-47ab-897e-f4f59e2ebf18",
-    sections: [{
-      content: `
-      <h1>Hej!</h1>
-      <p>wazap</p>
-      `,
-      order: 1,
-      section_type: "header"
-    }]
+  if (!blocks) {
+    return null;
   }
 
-  const user = await client.login("furkan_abay@hotmail.com", "svUafWRaS6ogotqMENUKe9Pb");
-  console.log(user)
+  const file = new Blob([screenshot], { type: 'image/jpeg' });
+  const formData = new FormData();
+  formData.append("file", file, "screenshot.jpg");
 
+  const uploadedImage = await client.request(uploadFiles(formData)) as { id: string };
+
+  const item: PageType = {
+    title: title,
+    screenshot: uploadedImage.id,
+    sections: blocks.sections
+  };
 
   const result = await client.request(createItem("pages", item));
   console.log(result);
+
+  return Promise.resolve()
 }
 
 createItemInDirectus();
